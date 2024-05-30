@@ -12,7 +12,7 @@ json decode_bencoded_string(const std::string &encoded_string, size_t &pos) {
     size_t colon_index = encoded_string.find(':', pos);
     if (colon_index == std::string::npos)
         return NULL;
-    std::string number_string = encoded_string.substr(pos, colon_index);
+    std::string number_string = encoded_string.substr(pos, colon_index-pos);
     int64_t number = std::atoll(number_string.c_str());
     pos = colon_index + number + 1;
     std::string str = encoded_string.substr(colon_index + 1, number);
@@ -23,7 +23,7 @@ json decode_bencoded_integer(const std::string &encoded_integer, size_t &pos) {
     size_t e_index = encoded_integer.find('e', pos);
     if (e_index == std::string::npos)
         return NULL;
-    std::string number_string = encoded_integer.substr(pos + 1, e_index);
+    std::string number_string = encoded_integer.substr(pos + 1, e_index - pos - 1);
     int64_t number = std::atoll(number_string.c_str());
     pos = e_index + 1;
     return json(number);
@@ -61,7 +61,7 @@ json decode_bencoded_value(const std::string &encoded_value, size_t &pos) {
         return decode_bencoded_list(encoded_value, pos);
     else if (encoded_value[pos] == 'd')
         return decode_bencoded_dictionary(encoded_value, pos);
-    else if (encoded_value[pos] == 'e')
+    else
         std::cerr << "ERROR:\n" << pos << "\n";
     return NULL;
 }
