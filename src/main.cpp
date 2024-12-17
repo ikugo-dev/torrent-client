@@ -1,54 +1,56 @@
+#include <fstream>
 #include <iostream>
 #include <string>
-#include <fstream>
 // #include <vector>
 // #include <cctype>
 // #include <cstdlib>
 
-#include "../lib/json.hpp"
 #include "../lib/bencode_parser.hpp"
+#include "../lib/json.hpp"
 
 using json = nlohmann::json;
 
-
 int main(int argc, char *argv[]) {
     if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " <command> <encoded_value>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <command> <encoded_value>"
+                  << '\n';
         return 1;
     }
-    
+
     std::string command = argv[1];
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0];
+        if (command == "decode")
+            std::cerr << " decode <encoded_value>\n";
+        else if (command == "info")
+            std::cerr << " info <.torrent_file>\n";
+        return 1;
+    }
 
     if (command == "decode") {
-        if (argc < 3) {
-            std::cerr << "Usage: " << argv[0] << " decode <encoded_value>" << std::endl;
-            return 1;
-        }
-
         std::string encoded_value = argv[2];
         json data = decode_bencode(encoded_value);
-        std::cout << data.dump() << std::endl;
+        std::cout << data.dump() << '\n';
     } else if (command == "info") {
-        if (argc < 3) {
-            std::cerr << "Usage: " << argv[0] << " info <.torrent file>" << std::endl;
-            return 1;
-        }
-
         std::string file_name = argv[2];
-        std::ifstream file(file_name);
-        if (!file.good()) {
-            std::cerr << "File is not valid" << std::endl;
+        std::ifstream torrent_file(file_name);
+        if (!torrent_file.good()) {
+            std::cerr << "File is not valid" << '\n';
             return 1;
         }
 
         std::string encoded_value;
-        std::getline(file, encoded_value);
-        file.close();
+        std::getline(torrent_file, encoded_value);
+        torrent_file.close();
 
         json data = decode_bencode(encoded_value);
-        std::cout << data.dump() << std::endl;
+
+        std::cout << "Tracker URL: " << data.at("announce");
+        std::cout << "\nLength: " << data.at("info").at("length");
+        std::cout << "\nLength: " << data.at("info").at("length");
+        std::cout << "\n\n\n" << data.dump() << std::endl;
     } else {
-        std::cerr << "unknown command: " << command << std::endl;
+        std::cerr << "unknown command: " << command << '\n';
         return 1;
     }
 

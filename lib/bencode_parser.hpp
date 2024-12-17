@@ -8,51 +8,79 @@
 using json = nlohmann::json;
 json decode_bencoded_value(const std::string &encoded_value, size_t &pos);
 
-json decode_bencoded_string(const std::string &encoded_string, size_t &pos) {
+inline json decode_bencoded_string(const std::string &encoded_string, size_t &pos) {
     size_t colon_index = encoded_string.find(':', pos);
-    if (colon_index == std::string::npos)
-        return NULL;
-    std::string number_string = encoded_string.substr(pos, colon_index-pos);
+    if (colon_index == std::string::npos) {
+        std::cerr << "Malformed Bencode: String: Colon is not found.\n";
+        exit(1);
+    }
+    std::string number_string = encoded_string.substr(pos, colon_index - pos);
     int64_t number = std::atoll(number_string.c_str());
-    pos = colon_index + number + 1;
-    std::string str = encoded_string.substr(colon_index + 1, number);
-    return json(str);
+    if (number < 0 || colon_index + 1 + number > encoded_string.size()) {
+        std::cerr << "Malformed Bencode: String: Length exceeds input size.\n";
+        exit(1);
+    }
+    const char* binary_data = encoded_string.data() + colon_index + 1;
+    size_t binary_size = static_cast<size_t>(number);
+    pos = colon_index + 1 + binary_size;
+    std::vector<std::uint8_t> binary_vec(binary_data, binary_data + binary_size);
+    return json::binary_t(binary_vec);
 }
 
-json decode_bencoded_integer(const std::string &encoded_integer, size_t &pos) {
+inline json decode_bencoded_integer(const std::string &encoded_integer, size_t &pos) {
     size_t e_index = encoded_integer.find('e', pos);
-    if (e_index == std::string::npos)
-        return NULL;
+    if (e_index == std::string::npos) {
+        std::cerr << "Malformed Bencode: Integer: End ('e') is not found.\n";
+        exit(1);
+    }
     std::string number_string = encoded_integer.substr(pos + 1, e_index - pos - 1);
-    int64_t number = std::atoll(number_string.c_str());
+    uint64_t number = std::atoll(number_string.c_str());
     pos = e_index + 1;
     return json(number);
 }
 
-
-json decode_bencoded_list(const std::string &encoded_list, size_t &pos) {
+inline json decode_bencoded_list(const std::string &encoded_list, size_t &pos) {
     pos++;
     auto json_list = json::array();
-    while (encoded_list[pos] != 'e' || pos > encoded_list.size())
+    while (pos < encoded_list.size() && encoded_list[pos] != 'e') {
         json_list.push_back(decode_bencoded_value(encoded_list, pos));
+    }
+    if (pos >= encoded_list.size()) {
+        std::cerr << "Malformed Bencode: Unterminated list.\n";
+        exit(1);
+    }
     pos++;
     return json_list;
 }
 
-json decode_bencoded_dictionary(const std::string &encoded_dictionary, size_t &pos) {
+inline json decode_bencoded_dictionary(const std::string &encoded_dictionary, size_t &pos) {
     pos++;
-    auto json_dictionary = nlohmann::ordered_map<json, json>();
-    while (encoded_dictionary[pos] != 'e') {
-      auto key = decode_bencoded_value(encoded_dictionary, pos);
-      auto val = decode_bencoded_value(encoded_dictionary, pos);
-      json_dictionary.push_back({key, val});
+    auto json_dictionary = json::object(); // Use nlohmann::json object type for dictionaries
+    while (pos < encoded_dictionary.size() && encoded_dictionary[pos] != 'e') {
+        json key = decode_bencoded_value(encoded_dictionary, pos);
+        if (key.is_binary()) {
+            auto binary_data = key.get_binary();
+            key = std::string(binary_data.begin(), binary_data.end());
+        }
+        if (!key.is_string()) {
+            std::cerr << "Malformed Bencode: Dictionary keys must be strings.\n";
+            exit(1);
+        }
+        json val = decode_bencoded_value(encoded_dictionary, pos);
+        json_dictionary[key.get<std::string>()] = val;
+    }
+    if (pos >= encoded_dictionary.size()) {
+        std::cerr << "Malformed Bencode: Unexpected end of input in dictionary.\n";
     }
     pos++;
-    return json(json_dictionary);
-    // return std::make_tuple(json_dictionary, rest.substr(pos + 1));
+    return json_dictionary;
 }
 
-json decode_bencoded_value(const std::string &encoded_value, size_t &pos) {
+inline json decode_bencoded_value(const std::string &encoded_value, size_t &pos) {
+    if (pos >= encoded_value.size()) {
+        std::cerr << "Malformed Bencode: Unexpected end of input.\n";
+        exit(1);
+    }
     if (encoded_value[pos] == 'i')
         return decode_bencoded_integer(encoded_value, pos);
     else if (std::iswdigit(encoded_value[pos]))
@@ -61,19 +89,17 @@ json decode_bencoded_value(const std::string &encoded_value, size_t &pos) {
         return decode_bencoded_list(encoded_value, pos);
     else if (encoded_value[pos] == 'd')
         return decode_bencoded_dictionary(encoded_value, pos);
-    else
-        std::cerr << "ERROR:\n" << pos << "\n";
-    return NULL;
+    else if (pos > encoded_value.size())
+        return nullptr;
+    else {
+        for (int i = -5; i < 5; i++)
+            std::cerr << encoded_value[pos + i];
+        std::cerr << '\n';
+    }
+    return nullptr;
 }
 
-json decode_bencode(const std::string &encoded_dictionary) {
-    json json_final = json();
+inline json decode_bencode(const std::string &encoded_string) {
     size_t pos = 0;
-    while (pos < encoded_dictionary.size()) {
-        json current_json = decode_bencoded_value(encoded_dictionary, pos);
-        if (current_json == NULL)
-            break;
-        json_final.push_back(current_json);
-    }
-    return json_final;
+    return decode_bencoded_value(encoded_string, pos);
 }
